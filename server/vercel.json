@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "server/app.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "client/dentist/$1"
+    }
+  ],
+  "builds": [
+    {
+      "src": "server/app.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "client/dentist/package.json",
+      "use": "@vercel/next"
+    }
+  ]
+}
