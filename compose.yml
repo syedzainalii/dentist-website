@@ -1,19 +1,20 @@
 services:
-  # nextjs service
+  # Next.js Frontend
   nextapp:
     container_name: nextapp
     image: nextapp:1.0.0
     build:
-      context: ./client
-      dockerfile: next.dockerfile
+      context: .
+      dockerfile: client/next.dockerfile
     ports:
-      - 3000:3000
+      - "3000:3000"
     env_file:
-      - .env.docker  # Load from file instead
+      - .env.docker
     depends_on:
       - flaskapp
+    restart: always
 
-  # flask service
+  # Flask Backend
   flaskapp:
     container_name: flaskapp
     image: flaskapp:1.0.0
@@ -21,15 +22,18 @@ services:
       context: ./server
       dockerfile: flask.dockerfile
     ports:
-      - 4000:4000
+      - "4000:4000"
+    env_file:
+      - .env.docker
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
     depends_on:
       - db
     volumes:
-      - ./server/uploads/cars:/app/uploads/cars
+      - ./server/uploads:/app/uploads
+    restart: always
 
-  # db service
+  # PostgreSQL Database
   db:
     container_name: db
     image: postgres:17
@@ -38,9 +42,10 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
     ports:
-      - 5432:5432
+      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    restart: always
 
 volumes:
-  pgdata: {}
+  pgdata:

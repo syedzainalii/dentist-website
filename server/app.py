@@ -60,11 +60,15 @@ def handle_options():
         return response
 
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:postgres@db:5432/postgres"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@db:5432/postgres"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
-app.config['MAIL_PORT'] = int(os.environ.get('MAIL_PORT', 587))
+mail_port_env = os.environ.get('MAIL_PORT')
+app.config['MAIL_PORT'] = int(mail_port_env) if mail_port_env and mail_port_env.strip() else 587
 app.config['MAIL_USE_TLS'] = True
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
@@ -120,69 +124,66 @@ class User(db.Model):
         }
 
 
-class Booking(db.Model):
-    __tablename__ = 'bookings'
-    
+class Service(db.Model):
+    __tablename__ = 'services'
+
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    pickup_location = db.Column(db.String(200), nullable=False)
-    dropoff_location = db.Column(db.String(200), nullable=False)
-    car_type = db.Column(db.String(50), nullable=False)
-    status = db.Column(db.String(20), default='pending', server_default='pending')  # pending, confirmed, completed, cancelled
-    ride_date = db.Column(db.DateTime, nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    duration_minutes = db.Column(db.Integer, nullable=True)
+    is_active = db.Column(db.Boolean, default=True, server_default='true')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    bookings = db.relationship('Booking', backref='service', lazy=True)
 
     def to_dict(self):
         return {
             'id': self.id,
-            'user_id': self.user_id,
-            'user_name': self.user.name if self.user else None,
-            'user_email': self.user.email if self.user else None,
-            'pickup_location': self.pickup_location,
-            'dropoff_location': self.dropoff_location,
-            'car_type': self.car_type,
-            'status': self.status,
-            'ride_date': self.ride_date.isoformat() if self.ride_date else None,
+            'name': self.name,
+            'description': self.description,
+            'price': float(self.price) if self.price is not None else 0.0,
+            'duration_minutes': self.duration_minutes,
+            'is_active': self.is_active,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
 
 
-class Car(db.Model):
-    __tablename__ = 'cars'
-    
+class Booking(db.Model):
+    __tablename__ = 'bookings'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), nullable=False)
-    brand = db.Column(db.String(100), nullable=True)
-    details = db.Column(db.Text, nullable=True)
-    image_url = db.Column(db.String(500), nullable=True)
-    is_active = db.Column(db.Boolean, default=True)
-    year = db.Column(db.String(10), nullable=True)
-    seats = db.Column(db.String(10), nullable=True)
-    transmission = db.Column(db.String(50), nullable=True)
-    fuel = db.Column(db.String(50), nullable=True)
-    features = db.Column(db.Text, nullable=True)  # JSON stringified list
-    specs = db.Column(db.Text, nullable=True)     # JSON stringified dict
+    # FOREIGN KEY ADDED HERE: This resolves the SQLAlchemy mapper error
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    
+    customer_name = db.Column(db.String(120), nullable=False)
+    customer_email = db.Column(db.String(120), nullable=False)
+    customer_phone = db.Column(db.String(50), nullable=False)
+    service_id = db.Column(db.Integer, db.ForeignKey('services.id'), nullable=False, index=True)
+    preferred_date = db.Column(db.Date, nullable=False)
+    time_slot = db.Column(db.String(50), nullable=True) 
+    status = db.Column(db.String(20), default='pending', server_default='pending')
+    price = db.Column(db.Numeric(10, 2), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
-        import json
         return {
             'id': self.id,
-            'name': self.name,
-            'brand': self.brand,
-            'details': self.details,
-            'image_url': self.image_url,
-            'is_active': self.is_active,
-            'year': self.year,
-            'seats': self.seats,
-            'transmission': self.transmission,
-            'fuel': self.fuel,
-            'features': json.loads(self.features) if self.features else [],
-            'specs': json.loads(self.specs) if self.specs else {},
+            'user_id': self.user_id, # Included in dictionary for frontend tracking
+            'customer_name': self.customer_name,
+            'customer_email': self.customer_email,
+            'customer_phone': self.customer_phone,
+            'service_id': self.service_id,
+            'service_name': self.service.name if self.service else None,
+            'preferred_date': self.preferred_date.isoformat() if self.preferred_date else None,
+            'time_slot': self.time_slot,
+            'status': self.status,
+            'price': float(self.price) if self.price is not None else None,
+            'notes': self.notes,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
@@ -213,6 +214,7 @@ class ContentBlock(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+
 
 # ============================================================================
 # HELPER FUNCTIONS
@@ -270,6 +272,57 @@ def send_verification_email(email, code, name):
         return True
     except Exception as e:
         print(f"❌ Email Error: {str(e)}")
+        return False
+
+
+def send_booking_request_email(booking: 'Booking'):
+    """Notify customer that their booking request is received (pending)."""
+    try:
+        msg = Message(
+            subject="We received your appointment request",
+            recipients=[booking.customer_email],
+            html=f"""
+            <h2>Hi {booking.customer_name},</h2>
+            <p>Thank you for booking an appointment with our clinic.</p>
+            <p><strong>Status:</strong> Pending</p>
+            <p><strong>Service:</strong> {booking.service.name if booking.service else ''}</p>
+            <p><strong>Preferred date:</strong> {booking.preferred_date}</p>
+            <p>We will review your request and send you another email once it is confirmed with an exact time slot.</p>
+            """
+        )
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"❌ Booking Request Email Error: {str(e)}")
+        return False
+
+
+def send_booking_status_email(booking: 'Booking'):
+    """Notify customer when booking is confirmed or cancelled, including time slot if confirmed."""
+    try:
+        subject = "Your appointment has been updated"
+        if booking.status == 'confirmed':
+            subject = "Your appointment is confirmed"
+        elif booking.status == 'cancelled':
+            subject = "Your appointment has been cancelled"
+
+        time_info = f"<p><strong>Time slot:</strong> {booking.time_slot}</p>" if booking.time_slot else ""
+
+        msg = Message(
+            subject=subject,
+            recipients=[booking.customer_email],
+            html=f"""
+            <h2>Hi {booking.customer_name},</h2>
+            <p>Your booking status has been updated to: <strong>{booking.status.title()}</strong></p>
+            <p><strong>Service:</strong> {booking.service.name if booking.service else ''}</p>
+            <p><strong>Date:</strong> {booking.preferred_date}</p>
+            {time_info}
+            """
+        )
+        mail.send(msg)
+        return True
+    except Exception as e:
+        print(f"❌ Booking Status Email Error: {str(e)}")
         return False
 
 def generate_token(user):
@@ -747,51 +800,68 @@ def change_password(current_user):
 # ============================================================================
 
 
-@app.route('/api/bookings', methods=['GET', 'POST'])
-@token_required
-def bookings_handler(current_user):
-    if request.method == 'POST':
+@app.route('/api/public/bookings', methods=['POST'])
+def create_public_booking():
+    """
+    Public endpoint for patients to request an appointment.
+    No authentication required.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
+
+        customer_name = data.get('name', '').strip()
+        customer_email = data.get('email', '').strip().lower()
+        customer_phone = data.get('phone', '').strip()
+        service_id = data.get('service_id')
+        preferred_date_str = data.get('preferred_date', '').strip()
+        time_slot = data.get('time_slot', '').strip() or None
+        notes = data.get('notes', '').strip() or None
+
+        if not all([customer_name, customer_email, customer_phone, service_id, preferred_date_str]):
+            return jsonify({'success': False, 'message': 'Name, email, phone, service and preferred date are required'}), 400
+
         try:
-            data = request.get_json()
-            if not data:
-                return jsonify({'success': False, 'message': 'No data provided'}), 400
-            pickup_location = data.get('pickup_location', '').strip()
-            dropoff_location = data.get('dropoff_location', '').strip()
-            car_type = data.get('car_type', '').strip()
-            ride_date = data.get('ride_date')
-            if not all([pickup_location, dropoff_location, car_type]):
-                return jsonify({
-                    'success': False,
-                    'message': 'Pickup location, dropoff location, and car type are required'
-                }), 400
-            ride_date_obj = None
-            if ride_date:
-                try:
-                    ride_date_obj = datetime.fromisoformat(ride_date.replace('Z', '+00:00'))
-                except ValueError:
-                    return jsonify({'success': False, 'message': 'Invalid date format'}), 400
-            new_booking = Booking(
-                user_id=current_user.id,
-                pickup_location=pickup_location,
-                dropoff_location=dropoff_location,
-                car_type=car_type,
-                ride_date=ride_date_obj,
-                status='pending'
-            )
-            db.session.add(new_booking)
-            db.session.commit()
-            return jsonify({
-                'success': True,
-                'message': 'Booking created successfully',
-                'booking': new_booking.to_dict()
-            }), 201
-        except Exception as e:
-            db.session.rollback()
-            print(f"❌ Create Booking Error: {str(e)}")
-            return jsonify({'success': False, 'message': 'Failed to create booking'}), 500
-    # GET method for admin/moderator
-    if current_user.status not in ['admin', 'moderator']:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+            preferred_date = datetime.fromisoformat(preferred_date_str).date()
+        except ValueError:
+            return jsonify({'success': False, 'message': 'Invalid preferred_date format. Use ISO date (YYYY-MM-DD).'}), 400
+
+        service = Service.query.get(service_id)
+        if not service or not service.is_active:
+            return jsonify({'success': False, 'message': 'Selected service is not available'}), 400
+
+        booking = Booking(
+            customer_name=customer_name,
+            customer_email=customer_email,
+            customer_phone=customer_phone,
+            service_id=service.id,
+            preferred_date=preferred_date,
+            time_slot=time_slot,
+            status='pending',
+            price=service.price,
+            notes=notes
+        )
+        db.session.add(booking)
+        db.session.commit()
+
+        send_booking_request_email(booking)
+
+        return jsonify({
+            'success': True,
+            'message': 'Appointment request received',
+            'booking': booking.to_dict()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Create Public Booking Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to create booking'}), 500
+
+
+@app.route('/api/bookings', methods=['GET'])
+@role_required(['admin', 'moderator'])
+def list_bookings(current_user):
+    """List all bookings for admin/moderator, optionally filter by status."""
     try:
         status = request.args.get('status')
         query = Booking.query
@@ -805,190 +875,149 @@ def bookings_handler(current_user):
         return jsonify({'success': False, 'message': 'Failed to fetch bookings'}), 500
 
 
-@app.route('/api/bookings/my-bookings', methods=['GET'])
-@token_required
-def get_my_bookings(current_user):
-    """Get current user's bookings - Authenticated users only"""
+@app.route('/api/bookings/<int:booking_id>', methods=['GET'])
+@role_required(['admin', 'moderator'])
+def get_booking(current_user, booking_id):
+    """Get single booking details - Admin/Moderator only"""
     try:
-        bookings = Booking.query.filter_by(user_id=current_user.id).order_by(Booking.created_at.desc()).all()
-        bookings_list = [booking.to_dict() for booking in bookings]
-        
+        booking = Booking.query.get(booking_id)
+        if not booking:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+
         return jsonify({
             'success': True,
-            'bookings': bookings_list
+            'booking': booking.to_dict()
         }), 200
-        
     except Exception as e:
-        print(f"❌ Get My Bookings Error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Failed to fetch bookings'}), 500
+        print(f"❌ Get Booking Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to fetch booking'}), 500
 
 
 # ============================================================================
-# CAR MANAGEMENT ENDPOINTS
+# Services ENDPOINTS
 # ============================================================================
 
-@app.route('/api/cars', methods=['GET'])
-def get_cars():
-    """Get all cars (public endpoint, optionally filter by active status)"""
+@app.route('/api/services', methods=['GET'])
+def get_services():
+    """Get all services (public endpoint, optionally filter by active status)."""
     try:
-        active_only = request.args.get('active', 'false').lower() == 'true'
-        
-        query = Car.query
+        active_only = request.args.get('active', 'true').lower() == 'true'
+
+        query = Service.query
         if active_only:
             query = query.filter_by(is_active=True)
-        
-        cars = query.order_by(Car.created_at.desc()).all()
-        cars_list = [car.to_dict() for car in cars]
-        
+
+        services = query.order_by(Service.created_at.asc()).all()
+        services_list = [s.to_dict() for s in services]
+
         return jsonify({
             'success': True,
-            'cars': cars_list
+            'services': services_list
         }), 200
-        
+
     except Exception as e:
-        print(f"❌ Get Cars Error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Failed to fetch cars'}), 500
+        print(f"❌ Get Services Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to fetch services'}), 500
 
 
-@app.route('/api/cars', methods=['POST'])
-@role_required(['admin', 'moderator'])
-def create_car(current_user):
-    """Create a new car - Admin/Moderator only"""
+@app.route('/api/services', methods=['POST'])
+@role_required(['admin'])
+def create_service(current_user):
+    """Create a new service - Admin only."""
     try:
-        name = request.form.get('name', '').strip()
-        brand = request.form.get('brand', '').strip()
-        details = request.form.get('details', '').strip()
-        year = request.form.get('year', '').strip()
-        seats = request.form.get('seats', '').strip()
-        transmission = request.form.get('transmission', '').strip()
-        fuel = request.form.get('fuel', '').strip()
-        features = request.form.get('features', '').strip()  # Expecting JSON string
-        specs = request.form.get('specs', '').strip()        # Expecting JSON string
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'}), 400
 
-        # FIX: Check for 'true' OR '1' (since React sends '1')
-        is_active_raw = request.form.get('is_active', 'true').lower()
-        is_active = is_active_raw in ['true', '1']
+        name = data.get('name', '').strip()
+        description = data.get('description', '').strip()
+        price = data.get('price', 0)
+        duration_minutes = data.get('duration_minutes')
+        is_active = bool(data.get('is_active', True))
 
         if not name:
-            return jsonify({'success': False, 'message': 'Car name is required'}), 400
+            return jsonify({'success': False, 'message': 'Service name is required'}), 400
 
-        image_url = None
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename:
-                # Ensure directory exists
-                os.makedirs(os.path.join('uploads', 'cars'), exist_ok=True)
-                # Save image and generate URL
-                filename = f"car_{datetime.utcnow().timestamp()}_{file.filename}"
-                file.save(os.path.join('uploads', 'cars', filename))
-                image_url = f"/uploads/cars/{filename}"
-
-        car = Car(
+        service = Service(
             name=name,
-            brand=brand,
-            details=details,
-            year=year,
-            seats=seats,
-            transmission=transmission,
-            fuel=fuel,
-            features=features,
-            specs=specs,
-            image_url=image_url,
+            description=description or None,
+            price=price or 0,
+            duration_minutes=duration_minutes,
             is_active=is_active
         )
-        
-        db.session.add(car)
+
+        db.session.add(service)
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
-            'message': 'Car created successfully',
-            'car': car.to_dict()
+            'message': 'Service created successfully',
+            'service': service.to_dict()
         }), 201
-        
+
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Create Car Error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Failed to create car'}), 500
+        print(f"❌ Create Service Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to create service'}), 500
 
 
-@app.route('/api/cars/<int:car_id>', methods=['PUT'])
-@role_required(['admin', 'moderator'])
-def update_car(current_user, car_id):
-    """Update a car - Admin/Moderator only"""
+@app.route('/api/services/<int:service_id>', methods=['PUT'])
+@role_required(['admin'])
+def update_service(current_user, service_id):
+    """Update an existing service - Admin only."""
     try:
-        car = Car.query.get(car_id)
-        if not car:
-            return jsonify({'success': False, 'message': 'Car not found'}), 404
-        
-        if 'name' in request.form:
-            car.name = request.form.get('name', '').strip()
-        if 'brand' in request.form:
-            car.brand = request.form.get('brand', '').strip()
-        if 'details' in request.form:
-            car.details = request.form.get('details', '').strip()
-        if 'year' in request.form:
-            car.year = request.form.get('year', '').strip()
-        if 'seats' in request.form:
-            car.seats = request.form.get('seats', '').strip()
-        if 'transmission' in request.form:
-            car.transmission = request.form.get('transmission', '').strip()
-        if 'fuel' in request.form:
-            car.fuel = request.form.get('fuel', '').strip()
-        if 'features' in request.form:
-            car.features = request.form.get('features', '').strip()
-        if 'specs' in request.form:
-            car.specs = request.form.get('specs', '').strip()
+        service = Service.query.get(service_id)
+        if not service:
+            return jsonify({'success': False, 'message': 'Service not found'}), 404
 
-        # FIX: Properly handle the is_active toggle
-        if 'is_active' in request.form:
-            is_active_raw = request.form.get('is_active', '').lower()
-            car.is_active = is_active_raw in ['true', '1']
+        data = request.get_json() or {}
 
-        if 'image' in request.files:
-            file = request.files['image']
-            if file and file.filename:
-                os.makedirs(os.path.join('uploads', 'cars'), exist_ok=True)
-                filename = f"car_{datetime.utcnow().timestamp()}_{file.filename}"
-                file.save(os.path.join('uploads', 'cars', filename))
-                car.image_url = f"/uploads/cars/{filename}"
-        
-        car.updated_at = datetime.utcnow()
+        if 'name' in data:
+            service.name = data['name'].strip()
+        if 'description' in data:
+            service.description = (data['description'] or '').strip() or None
+        if 'price' in data:
+            service.price = data['price'] or 0
+        if 'duration_minutes' in data:
+            service.duration_minutes = data['duration_minutes']
+        if 'is_active' in data:
+            service.is_active = bool(data['is_active'])
+
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
-            'message': 'Car updated successfully',
-            'car': car.to_dict()
+            'message': 'Service updated successfully',
+            'service': service.to_dict()
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Update Car Error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Failed to update car'}), 500
+        print(f"❌ Update Service Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to update service'}), 500
 
 
-@app.route('/api/cars/<int:car_id>', methods=['DELETE'])
-@role_required(['admin', 'moderator'])
-def delete_car(current_user, car_id):
-    """Delete a car - Admin/Moderator only"""
+@app.route('/api/services/<int:service_id>', methods=['DELETE'])
+@role_required(['admin'])
+def delete_service(current_user, service_id):
+    """Delete a service - Admin only."""
     try:
-        car = Car.query.get(car_id)
-        if not car:
-            return jsonify({'success': False, 'message': 'Car not found'}), 404
-        
-        db.session.delete(car)
+        service = Service.query.get(service_id)
+        if not service:
+            return jsonify({'success': False, 'message': 'Service not found'}), 404
+
+        db.session.delete(service)
         db.session.commit()
-        
+
         return jsonify({
             'success': True,
-            'message': 'Car deleted successfully'
+            'message': 'Service deleted successfully'
         }), 200
-        
+
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Delete Car Error: {str(e)}")
-        return jsonify({'success': False, 'message': 'Failed to delete car'}), 500
+        print(f"❌ Delete Service Error: {str(e)}")
+        return jsonify({'success': False, 'message': 'Failed to delete service'}), 500
 
 
 @app.route('/uploads/<path:filename>')
@@ -1216,21 +1245,23 @@ def dashboard_summary(current_user):
         verified_users = User.query.filter_by(is_verified=True).count()
         admin_users = User.query.filter_by(status='admin').count()
         moderator_users = User.query.filter_by(status='moderator').count()
-        
+
         total_bookings = Booking.query.count()
         pending_bookings = Booking.query.filter_by(status='pending').count()
         confirmed_bookings = Booking.query.filter_by(status='confirmed').count()
         completed_bookings = Booking.query.filter_by(status='completed').count()
         cancelled_bookings = Booking.query.filter_by(status='cancelled').count()
-        
+
         # Calculate total revenue from completed bookings
         completed_bookings_query = Booking.query.filter_by(status='completed')
         total_revenue = sum(float(booking.price) for booking in completed_bookings_query.all() if booking.price)
-        
+
         # Get bookings from last 7 days
         seven_days_ago = datetime.utcnow() - timedelta(days=7)
         recent_bookings = Booking.query.filter(Booking.created_at >= seven_days_ago).count()
-        
+
+        total_services = Service.query.count()
+
         return jsonify({
             'success': True,
             'summary': {
@@ -1248,12 +1279,15 @@ def dashboard_summary(current_user):
                     'cancelled': cancelled_bookings,
                     'recent_7_days': recent_bookings
                 },
+                'services': {
+                    'total': total_services
+                },
                 'revenue': {
                     'total': total_revenue
                 }
             }
         }), 200
-        
+
     except Exception as e:
         print(f"❌ Dashboard Summary Error: {str(e)}")
         return jsonify({'success': False, 'message': 'Failed to load dashboard summary'}), 500
@@ -1325,14 +1359,30 @@ def dashboard_charts(current_user):
             'completed': Booking.query.filter_by(status='completed').count(),
             'cancelled': Booking.query.filter_by(status='cancelled').count()
         }
-        
+
+        # Revenue by service (for charts)
+        revenue_by_service = []
+        services = Service.query.all()
+        for service in services:
+            completed_for_service = Booking.query.filter_by(
+                service_id=service.id,
+                status='completed'
+            ).all()
+            revenue = sum(float(b.price) for b in completed_for_service if b.price)
+            revenue_by_service.append({
+                'service_id': service.id,
+                'service_name': service.name,
+                'revenue': revenue
+            })
+
         return jsonify({
             'success': True,
             'charts': {
                 'bookings_over_time': bookings_data,
                 'revenue_over_time': revenue_data,
                 'users_over_time': users_data,
-                'booking_status_distribution': status_distribution
+                'booking_status_distribution': status_distribution,
+                'revenue_by_service': revenue_by_service
             }
         }), 200
         
@@ -1352,9 +1402,9 @@ def update_booking_status(current_user, booking_id):
     Allowed statuses: pending, confirmed, completed, cancelled
     """
     try:
-        data = request.get_json()
+        data = request.get_json() or {}
 
-        if not data or 'status' not in data:
+        if 'status' not in data:
             return jsonify({
                 'success': False,
                 'message': 'Status is required'
@@ -1376,9 +1426,24 @@ def update_booking_status(current_user, booking_id):
                 'message': 'Booking not found'
             }), 404
 
+        # Optional: allow updating time_slot when confirming
+        time_slot = data.get('time_slot')
+        if time_slot is not None:
+            booking.time_slot = time_slot.strip() or None
+
+        # If confirming, ensure we have a time slot
+        if new_status == 'confirmed' and not booking.time_slot:
+            return jsonify({
+                'success': False,
+                'message': 'Time slot is required when confirming a booking'
+            }), 400
+
         booking.status = new_status
         booking.updated_at = datetime.utcnow()
         db.session.commit()
+
+        # Send notification email
+        send_booking_status_email(booking)
 
         return jsonify({
             'success': True,
@@ -1408,25 +1473,91 @@ def internal_error(error):
     db.session.rollback()
     return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
+
 # ============================================================================
-# INITIALIZE DATABASE
+# INITIALIZE DATABASE & ADMIN SEED
 # ============================================================================
 
+def seed_admin_user():
+    """Create initial admin user from environment variables if not present."""
+    admin_email = os.environ.get('ADMIN_EMAIL')
+    admin_password = os.environ.get('ADMIN_PASSWORD')
+
+    # Debug print to see exactly what Docker is passing
+    if not admin_email or not admin_password:
+        print(f"ℹ️ Seeding skipped. Env values: EMAIL={'Set' if admin_email else 'MISSING'}, PWD={'Set' if admin_password else 'MISSING'}")
+        return
+
+    admin_email = admin_email.strip().lower()
+
+    try:
+        existing_admin = User.query.filter_by(email=admin_email).first()
+        
+        if existing_admin:
+            # Sync status if they exist but aren't admin
+            if existing_admin.status != 'admin':
+                existing_admin.status = 'admin'
+                existing_admin.is_verified = True
+                db.session.commit()
+                print(f"✅ Existing user {admin_email} promoted to admin.")
+            else:
+                print(f"ℹ️ Admin already exists: {admin_email}")
+            return
+
+        # Create new admin
+        hashed_password = generate_password_hash(admin_password)
+        admin_user = User(
+            name='Clinic Admin',
+            email=admin_email,
+            password=hashed_password,
+            status='admin',  # This matches the 'role' check in your layout.js
+            is_verified=True
+        )
+        db.session.add(admin_user)
+        db.session.commit()
+        print(f"✅ Admin user created successfully: {admin_email}")
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error during seeding: {str(e)}")
+
+# This block ensures tables are created and seeded on startup
 with app.app_context():
-    db.create_all()
-    print("✅ Database initialized successfully")
+    try:
+        db.create_all()
+        seed_admin_user()
+        print("✅ Database initialized successfully")
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
 
 # ============================================================================
 # RUN APPLICATION
 # ============================================================================
 
 if __name__ == '__main__':
+    with app.app_context():
+        try:
+            # 1. Ensure the DB connection is ready and create tables
+            print("⏳ Initializing database...")
+            db.create_all()
+            print("✅ Database tables confirmed/created.")
+            
+            # 2. Check for Admin (Optional but recommended)
+            # You could add logic here to create the first admin 
+            # using os.environ.get('ADMIN_EMAIL')
+            
+        except Exception as e:
+            print(f"❌ Database initialization failed: {e}")
+
+    # Display startup info
     print("\n" + "="*50)
-    print("🚀 Flask Authentication API Server")
+    print("🚀 DENTAL CLINIC API - CONTAINER MODE")
     print("="*50)
-    print(f"📍 Server: http://localhost:4000")
-    print(f"📚 API Docs: http://localhost:4000/")
-    print(f"💚 Health Check: http://localhost:4000/api/health")
+    # Inside Docker, 0.0.0.0 maps to your machine's localhost:4000
+    print(f"🌐 Access via host: http://localhost:4000")
+    print(f"🏥 Health Check:   http://localhost:4000/api/health")
+    print(f"📁 Uploads dir:    {os.path.abspath(UPLOAD_FOLDER)}")
     print("="*50 + "\n")
     
+    # host='0.0.0.0' is critical for Docker networking
     app.run(host='0.0.0.0', port=4000, debug=True)

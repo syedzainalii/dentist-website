@@ -2,6 +2,7 @@ Flask
 Flask-SQLAlchemy
 Flask-CORS
 Flask-Mail
+Flask-Migrate
 PyJWT
 python-dotenv
 Werkzeug
